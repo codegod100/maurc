@@ -1,3 +1,25 @@
 /dist/
 /target/
 /Cargo.lock
+
+# Android signing artifacts
+my.keystore
+*.keystore
+*.jks
+src-tauri/gen/android/keystore.properties
+
+# Android/Gradle local configs (safety)
+src-tauri/gen/**/local.properties
+src-tauri/gen/**/key.properties
+src-tauri/gen/**/keystore.properties
+src-tauri/gen/**/.gradle/
+src-tauri/gen/**/build/
+src-tauri/gen/**/.cxx/
+src-tauri/gen/**/captures/
+src-tauri/gen/**/.idea/
+src-tauri/gen/**/.tauri
+src-tauri/gen/**/tauri.settings.gradle
+src-tauri/gen/**/tauri.build.gradle.kts
+src-tauri/gen/**/proguard-tauri.pro
+src-tauri/gen/android/app/src/main/jniLibs/**/*.so
+src-tauri/gen/android/app/src/main/assets/tauri.conf.json
