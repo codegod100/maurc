@@ -57,10 +57,10 @@ jobs:
             -validity 10000 \
             -dname "CN=CI, OU=CI, O=CI, L=CI, S=CA, C=US"
           cat <<EOF > src-tauri/gen/android/keystore.properties
-password=$KEYSTORE_PASSWORD
-keyAlias=upload
-storeFile=${PWD}/android-release.keystore
-EOF
+          password=$KEYSTORE_PASSWORD
+          keyAlias=upload
+          storeFile=${PWD}/android-release.keystore
+          EOF
 
       - name: Build release APK (arm64)
         working-directory: src-tauri/gen/android
