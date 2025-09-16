@@ -31,6 +31,9 @@ android {
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
+        // Required so dependencies without the abi flavor dimension (e.g. tauri-android
+        // library modules) can still match our generated abi variants.
+        missingDimensionStrategy("abi", "arm64", "arm", "x86", "x86_64")
     }
     signingConfigs {
         create("release") {

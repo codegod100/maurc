@@ -58,6 +58,12 @@ struct TouchState {
     anchor: Option<Vec2>,
 }
 
+#[derive(Resource, Clone)]
+struct ObstacleAssets {
+    mesh: Handle<Mesh>,
+    material: Handle<StandardMaterial>,
+}
+
 #[derive(Resource, Clone, Copy)]
 struct AppBootTime {
     app_start: Instant,
@@ -317,6 +323,22 @@ fn enter_playing(
         ..Default::default()
     });
 
+    // Cache obstacle mesh/material so spawns reuse GPU resources.
+    let obstacle_mesh = meshes.add(Mesh::from(Cuboid::new(
+        OBSTACLE_SIZE.x,
+        OBSTACLE_SIZE.y,
+        OBSTACLE_SIZE.z,
+    )));
+    let obstacle_material = materials.add(StandardMaterial {
+        base_color: Color::srgb(1.0, 0.3, 0.3),
+        unlit: true,
+        ..Default::default()
+    });
+    commands.insert_resource(ObstacleAssets {
+        mesh: obstacle_mesh,
+        material: obstacle_material,
+    });
+
     // HUD (score)
     commands
         .spawn((
@@ -414,10 +436,9 @@ fn spawn_obstacles(
     time: Res<Time>,
     score: Res<Score>,
     mut timer: ResMut<SpawnTimer>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
     bt: Res<AppBootTime>,
     mut first_spawn_logged: Local<bool>,
+    obstacle_assets: Res<ObstacleAssets>,
 ) {
     let elapsed_seconds = score.value / SCORE_PER_SECOND;
     let target_interval = (SPAWN_INTERVAL_BASE - elapsed_seconds * SPAWN_INTERVAL_DECAY_PER_SEC)
@@ -430,21 +451,10 @@ fn spawn_obstacles(
         let mut rng = rand::thread_rng();
         let x = rng.gen_range(-TRACK_HALF_X..=TRACK_HALF_X);
 
-        let mesh = meshes.add(Mesh::from(Cuboid::new(
-            OBSTACLE_SIZE.x,
-            OBSTACLE_SIZE.y,
-            OBSTACLE_SIZE.z,
-        )));
-        let material = materials.add(StandardMaterial {
-            base_color: Color::srgb(1.0, 0.3, 0.3),
-            unlit: true,
-            ..Default::default()
-        });
-
         commands.spawn((
             PbrBundle {
-                mesh,
-                material,
+                mesh: obstacle_assets.mesh.clone(),
+                material: obstacle_assets.material.clone(),
                 transform: Transform::from_xyz(x, OBSTACLE_SIZE.y * 0.5, OBSTACLE_START_Z),
                 ..Default::default()
             },
@@ -539,6 +549,7 @@ fn exit_playing(
     for e in &q_hud {
         commands.entity(e).despawn_recursive();
     }
+    commands.remove_resource::<ObstacleAssets>();
 }
 
 // --- Game Over ---
