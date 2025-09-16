@@ -5,7 +5,24 @@ if (cargoHome == null || cargoHome.isBlank()) {
 }
 def registryRoot = new File(cargoHome, "registry/src/index.crates.io-1949cf8c6b5b557f")
 
+def vendorRoot = new File(settingsDir, "vendor")
+
 include ':tauri-android'
-project(':tauri-android').projectDir = new File(registryRoot, "tauri-2.8.5/mobile/android")
+def tauriAndroidDir = new File(vendorRoot, "tauri-android")
+if (!tauriAndroidDir.exists()) {
+    tauriAndroidDir = new File(registryRoot, "tauri-2.8.5/mobile/android")
+}
+if (!tauriAndroidDir.exists()) {
+    throw new GradleException("Unable to locate tauri-android sources. Run `cargo fetch -p tauri` or ensure vendor/tauri-android is checked in.")
+}
+project(':tauri-android').projectDir = tauriAndroidDir
+
 include ':tauri-plugin-opener'
-project(':tauri-plugin-opener').projectDir = new File(registryRoot, "tauri-plugin-opener-2.5.0/android")
+def tauriPluginOpenerDir = new File(vendorRoot, "tauri-plugin-opener")
+if (!tauriPluginOpenerDir.exists()) {
+    tauriPluginOpenerDir = new File(registryRoot, "tauri-plugin-opener-2.5.0/android")
+}
+if (!tauriPluginOpenerDir.exists()) {
+    throw new GradleException("Unable to locate tauri-plugin-opener sources. Run `cargo fetch -p tauri-plugin-opener` or ensure vendor/tauri-plugin-opener is checked in.")
+}
+project(':tauri-plugin-opener').projectDir = tauriPluginOpenerDir

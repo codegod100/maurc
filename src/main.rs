@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use bevy::render::texture::ImagePlugin;
 use bevy::render::view::Msaa;
 use bevy::utils::Instant;
+use bevy::window::PrimaryWindow;
 use rand::Rng;
 use std::time::Duration;
 
@@ -376,6 +377,7 @@ fn player_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut touch_evs: EventReader<TouchInput>,
     mut touch_state: ResMut<TouchState>,
+    windows: Query<&Window, With<PrimaryWindow>>,
 ) {
     // Keyboard (desktop): discrete steps
     for (_t, mut p) in &mut q_player {
@@ -384,6 +386,18 @@ fn player_input(
         }
         if keys.just_pressed(KeyCode::ArrowRight) || keys.just_pressed(KeyCode::KeyD) {
             p.target_x = (p.target_x + KEY_STEP_X).clamp(-TRACK_HALF_X, TRACK_HALF_X);
+        }
+    }
+
+    // Mouse movement (desktop): map cursor to track position without click requirement
+    if let Ok(primary_window) = windows.get_single() {
+        if let Some(cursor) = primary_window.cursor_position() {
+            // Center the track in the window width
+            let half_width = primary_window.width() * 0.5;
+            let dx_px = cursor.x - half_width;
+            for (_t, mut p) in &mut q_player {
+                p.target_x = (dx_px * DRAG_X_PER_PX).clamp(-TRACK_HALF_X, TRACK_HALF_X);
+            }
         }
     }
 
