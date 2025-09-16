@@ -356,7 +356,10 @@ fn enter_playing(
         .with_children(|parent| {
             parent.spawn((
                 TextBundle::from_section(
-                    format!("Score: 0  Speed: {:.1}", OBSTACLE_SPEED),
+                    format!(
+                        "Score: 0  Best: {}  Speed: {:.1}",
+                        score.best as i32, OBSTACLE_SPEED
+                    ),
                     TextStyle {
                         font_size: 28.0,
                         color: Color::WHITE,
@@ -530,7 +533,10 @@ fn update_score_text(score: Res<Score>, mut q: Query<&mut Text, With<ScoreText>>
     let elapsed_seconds = score.value / SCORE_PER_SECOND;
     let speed = OBSTACLE_SPEED + elapsed_seconds * OBSTACLE_SPEED_GROWTH_PER_SEC;
     for mut text in &mut q {
-        text.sections[0].value = format!("Score: {}  Speed: {:.1}", score.value as i32, speed);
+        text.sections[0].value = format!(
+            "Score: {}  Best: {}  Speed: {:.1}",
+            score.value as i32, score.best as i32, speed
+        );
     }
 }
 
