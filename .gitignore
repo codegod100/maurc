@@ -18,7 +18,6 @@ src-tauri/gen/**/.cxx/
 src-tauri/gen/**/captures/
 src-tauri/gen/**/.idea/
 src-tauri/gen/**/.tauri
-src-tauri/gen/**/tauri.build.gradle.kts
 src-tauri/gen/**/proguard-tauri.pro
 src-tauri/gen/android/app/src/main/jniLibs/**/*.so
 src-tauri/gen/android/app/src/main/assets/tauri.conf.json
