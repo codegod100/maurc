@@ -1,4 +1,4 @@
-package com.taurc.app
+package nandi.speedblock
 
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge

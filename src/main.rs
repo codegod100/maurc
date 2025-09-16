@@ -1,10 +1,11 @@
-use bevy::prelude::*;
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::input::touch::{TouchInput, TouchPhase};
+use bevy::prelude::*;
 use bevy::render::texture::ImagePlugin;
 use bevy::render::view::Msaa;
 use bevy::utils::Instant;
 use rand::Rng;
+use std::time::Duration;
 
 // --- Game tuning constants ---
 const TRACK_HALF_X: f32 = 4.2; // world units half-width for movement
@@ -14,10 +15,14 @@ const OBSTACLE_SIZE: Vec3 = Vec3::new(0.8, 0.8, 0.8);
 const OBSTACLE_START_Z: f32 = -25.0;
 const OBSTACLE_DESPAWN_Z: f32 = 7.0;
 const OBSTACLE_SPEED: f32 = 8.0; // units/sec towards camera
-const SPAWN_EVERY: f32 = 0.9;    // seconds
+const OBSTACLE_SPEED_GROWTH_PER_SEC: f32 = 0.50; // incremental speed gain each second survived
+const SPAWN_INTERVAL_BASE: f32 = 0.9; // base seconds between spawns
+const SPAWN_INTERVAL_MIN: f32 = 0.35; // lower bound on spawn delay
+const SPAWN_INTERVAL_DECAY_PER_SEC: f32 = 0.02; // how much to shorten delay per survival second
 const DRAG_X_PER_PX: f32 = 0.02; // world units per horizontal pixel drag
 const PLAYER_LERP_SPEED: f32 = 12.0; // x-axis smoothing towards target
 const KEY_STEP_X: f32 = 0.9; // keyboard step per press
+const SCORE_PER_SECOND: f32 = 10.0;
 
 #[derive(States, Default, Debug, Clone, Eq, PartialEq, Hash)]
 enum GameState {
@@ -87,14 +92,17 @@ fn main() {
                     }),
                     ..Default::default()
                 })
-                .set(ImagePlugin::default_nearest())
+                .set(ImagePlugin::default_nearest()),
         )
         .insert_resource(Msaa::Off)
-        .insert_resource(AppBootTime { app_start: start, first_update_logged: false })
+        .insert_resource(AppBootTime {
+            app_start: start,
+            first_update_logged: false,
+        })
         .init_state::<GameState>()
         .insert_resource(Score::default())
         .insert_resource(SpawnTimer(Timer::from_seconds(
-            SPAWN_EVERY,
+            SPAWN_INTERVAL_BASE,
             TimerMode::Repeating,
         )))
         .insert_resource(TouchState::default())
@@ -103,7 +111,10 @@ fn main() {
         .add_systems(Startup, log_after_setup)
         // Menu
         .add_systems(OnEnter(GameState::Menu), enter_menu)
-        .add_systems(Update, (menu_start, first_update_probe).run_if(in_state(GameState::Menu)))
+        .add_systems(
+            Update,
+            (menu_start, first_update_probe).run_if(in_state(GameState::Menu)),
+        )
         .add_systems(OnExit(GameState::Menu), exit_menu)
         // Playing
         .add_systems(OnEnter(GameState::Playing), enter_playing)
@@ -123,7 +134,10 @@ fn main() {
         .add_systems(OnExit(GameState::Playing), exit_playing)
         // GameOver
         .add_systems(OnEnter(GameState::GameOver), enter_game_over)
-        .add_systems(Update, game_over_restart.run_if(in_state(GameState::GameOver)))
+        .add_systems(
+            Update,
+            game_over_restart.run_if(in_state(GameState::GameOver)),
+        )
         .add_systems(OnExit(GameState::GameOver), exit_game_over)
         .run();
 }
@@ -134,19 +148,28 @@ fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
     bt: Res<AppBootTime>,
 ) {
-    info!("[boot] setup: begin (+{:?} since start)", bt.app_start.elapsed());
+    info!(
+        "[boot] setup: begin (+{:?} since start)",
+        bt.app_start.elapsed()
+    );
     // Camera slightly above and behind, looking at the play area
     commands.spawn(Camera3dBundle {
-        transform: Transform::from_xyz(0.0, 6.0, 8.0)
-            .looking_at(Vec3::new(0.0, 0.5, 0.0), Vec3::Y),
-        camera: Camera { hdr: false, ..Default::default() },
+        transform: Transform::from_xyz(0.0, 6.0, 8.0).looking_at(Vec3::new(0.0, 0.5, 0.0), Vec3::Y),
+        camera: Camera {
+            hdr: false,
+            ..Default::default()
+        },
         tonemapping: Tonemapping::None,
         ..Default::default()
     });
 
     // Prewarm PBR pipeline with an off-screen unlit cube
     let warm_mesh = meshes.add(Mesh::from(Cuboid::new(0.1, 0.1, 0.1)));
-    let warm_mat = materials.add(StandardMaterial { base_color: Color::srgb(1.0, 1.0, 1.0), unlit: true, ..Default::default() });
+    let warm_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(1.0, 1.0, 1.0),
+        unlit: true,
+        ..Default::default()
+    });
     commands.spawn((
         PbrBundle {
             mesh: warm_mesh,
@@ -226,7 +249,10 @@ fn menu_start(
     let keyed = keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter);
 
     if touched || clicked || keyed {
-        info!("[boot] menu: input -> request Playing (+{:?})", bt.app_start.elapsed());
+        info!(
+            "[boot] menu: input -> request Playing (+{:?})",
+            bt.app_start.elapsed()
+        );
         next_state.set(GameState::Playing);
     }
 }
@@ -250,6 +276,9 @@ fn enter_playing(
     info!("[boot] playing: enter (+{:?})", bt.app_start.elapsed());
     // Reset score and timer
     score.value = 0.0;
+    spawn_timer
+        .0
+        .set_duration(Duration::from_secs_f32(SPAWN_INTERVAL_BASE));
     spawn_timer.0.reset();
 
     // Player
@@ -305,7 +334,7 @@ fn enter_playing(
         .with_children(|parent| {
             parent.spawn((
                 TextBundle::from_section(
-                    "Score: 0",
+                    format!("Score: 0  Speed: {:.1}", OBSTACLE_SPEED),
                     TextStyle {
                         font_size: 28.0,
                         color: Color::WHITE,
@@ -383,12 +412,20 @@ fn update_player_transform(time: Res<Time>, mut q: Query<(&Player, &mut Transfor
 fn spawn_obstacles(
     mut commands: Commands,
     time: Res<Time>,
+    score: Res<Score>,
     mut timer: ResMut<SpawnTimer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     bt: Res<AppBootTime>,
     mut first_spawn_logged: Local<bool>,
 ) {
+    let elapsed_seconds = score.value / SCORE_PER_SECOND;
+    let target_interval = (SPAWN_INTERVAL_BASE - elapsed_seconds * SPAWN_INTERVAL_DECAY_PER_SEC)
+        .max(SPAWN_INTERVAL_MIN);
+    timer
+        .0
+        .set_duration(Duration::from_secs_f32(target_interval));
+
     if timer.0.tick(time.delta()).just_finished() {
         let mut rng = rand::thread_rng();
         let x = rng.gen_range(-TRACK_HALF_X..=TRACK_HALF_X);
@@ -408,26 +445,33 @@ fn spawn_obstacles(
             PbrBundle {
                 mesh,
                 material,
-                transform: Transform::from_xyz(
-                    x,
-                    OBSTACLE_SIZE.y * 0.5,
-                    OBSTACLE_START_Z,
-                ),
+                transform: Transform::from_xyz(x, OBSTACLE_SIZE.y * 0.5, OBSTACLE_START_Z),
                 ..Default::default()
             },
             Obstacle,
         ));
 
         if !*first_spawn_logged {
-            info!("[boot] first obstacle spawned (+{:?})", bt.app_start.elapsed());
+            info!(
+                "[boot] first obstacle spawned (+{:?})",
+                bt.app_start.elapsed()
+            );
             *first_spawn_logged = true;
         }
     }
 }
 
-fn move_obstacles(mut commands: Commands, time: Res<Time>, mut q: Query<(Entity, &mut Transform), With<Obstacle>>) {
+fn move_obstacles(
+    mut commands: Commands,
+    time: Res<Time>,
+    score: Res<Score>,
+    mut q: Query<(Entity, &mut Transform), With<Obstacle>>,
+) {
+    let elapsed_seconds = score.value / SCORE_PER_SECOND;
+    let speed = OBSTACLE_SPEED + elapsed_seconds * OBSTACLE_SPEED_GROWTH_PER_SEC;
+
     for (e, mut t) in &mut q {
-        t.translation.z += OBSTACLE_SPEED * time.delta_seconds();
+        t.translation.z += speed * time.delta_seconds();
         if t.translation.z > OBSTACLE_DESPAWN_Z {
             commands.entity(e).despawn();
         }
@@ -440,7 +484,9 @@ fn collision_system(
     q_player: Query<&Transform, With<Player>>,
     q_obstacles: Query<&Transform, With<Obstacle>>,
 ) {
-    let Ok(player_t) = q_player.get_single() else { return; };
+    let Ok(player_t) = q_player.get_single() else {
+        return;
+    };
 
     let px = player_t.translation.x;
     let pz = player_t.translation.z;
@@ -464,13 +510,17 @@ fn collision_system(
 }
 
 fn score_system(time: Res<Time>, mut score: ResMut<Score>) {
-    score.value += time.delta_seconds() * 10.0;
+    score.value += time.delta_seconds() * SCORE_PER_SECOND;
 }
 
 fn update_score_text(score: Res<Score>, mut q: Query<&mut Text, With<ScoreText>>) {
-    if !score.is_changed() { return; }
+    if !score.is_changed() {
+        return;
+    }
+    let elapsed_seconds = score.value / SCORE_PER_SECOND;
+    let speed = OBSTACLE_SPEED + elapsed_seconds * OBSTACLE_SPEED_GROWTH_PER_SEC;
     for mut text in &mut q {
-        text.sections[0].value = format!("Score: {}", score.value as i32);
+        text.sections[0].value = format!("Score: {}  Speed: {:.1}", score.value as i32, speed);
     }
 }
 
@@ -493,8 +543,10 @@ fn exit_playing(
 
 // --- Game Over ---
 fn enter_game_over(mut commands: Commands, score: Res<Score>) {
-    let msg = format!("Game Over\nScore: {}  Best: {}\nTap to Restart",
-        score.value as i32, score.best as i32);
+    let msg = format!(
+        "Game Over\nScore: {}  Best: {}\nTap to Restart",
+        score.value as i32, score.best as i32
+    );
 
     commands
         .spawn((

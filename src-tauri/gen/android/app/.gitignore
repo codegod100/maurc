@@ -1,4 +1,4 @@
-/src/main/java/com/taurc/app/generated
+/src/main/java/nandi/speedblock/generated
 /src/main/jniLibs/**/*.so
 /src/main/assets/tauri.conf.json
 /tauri.build.gradle.kts
