@@ -4,6 +4,8 @@ use bevy::prelude::*;
 use bevy::render::camera::PerspectiveProjection;
 use bevy::render::texture::ImagePlugin;
 use bevy::render::view::Msaa;
+use bevy::text::JustifyText;
+use bevy::ui::{AlignSelf, JustifyContent, ZIndex};
 use bevy::utils::Instant;
 use bevy::window::PrimaryWindow;
 use rand::Rng;
@@ -85,6 +87,11 @@ struct TouchState {
     anchor: Option<Vec2>,
 }
 
+#[derive(Resource, Default)]
+struct OrientationState {
+    is_portrait: bool,
+}
+
 #[derive(Resource, Clone)]
 struct ObstacleAssets {
     mesh: Handle<Mesh>,
@@ -105,6 +112,9 @@ struct MenuUi;
 struct GameOverUi;
 #[derive(Component)]
 struct HudRoot;
+
+#[derive(Component)]
+struct OrientationOverlay;
 
 fn main() {
     console_error_panic_hook::set_once();
@@ -139,6 +149,7 @@ fn main() {
             TimerMode::Repeating,
         )))
         .insert_resource(TouchState::default())
+        .insert_resource(OrientationState::default())
         // world setup
         .add_systems(Startup, setup)
         .add_systems(Startup, log_after_setup)
@@ -172,6 +183,8 @@ fn main() {
             game_over_restart.run_if(in_state(GameState::GameOver)),
         )
         .add_systems(OnExit(GameState::GameOver), exit_game_over)
+        .add_systems(First, update_orientation)
+        .add_systems(Update, manage_orientation_overlay)
         .run();
 }
 
@@ -268,7 +281,11 @@ fn menu_start(
     keys: Res<ButtonInput<KeyCode>>,
     mut next_state: ResMut<NextState<GameState>>,
     bt: Res<AppBootTime>,
+    orientation: Res<OrientationState>,
 ) {
+    if orientation.is_portrait {
+        return;
+    }
     let touched = touch_evs.read().next().is_some();
     let clicked = mouse.just_pressed(MouseButton::Left);
     let keyed = keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter);
@@ -396,7 +413,11 @@ fn player_input(
     mut touch_evs: EventReader<TouchInput>,
     mut touch_state: ResMut<TouchState>,
     windows: Query<&Window, With<PrimaryWindow>>,
+    orientation: Res<OrientationState>,
 ) {
+    if orientation.is_portrait {
+        return;
+    }
     // Keyboard (desktop): discrete steps
     for (_t, mut p) in &mut q_player {
         if keys.just_pressed(KeyCode::ArrowLeft) || keys.just_pressed(KeyCode::KeyA) {
@@ -451,7 +472,14 @@ fn player_input(
     }
 }
 
-fn update_player_transform(time: Res<Time>, mut q: Query<(&Player, &mut Transform)>) {
+fn update_player_transform(
+    time: Res<Time>,
+    mut q: Query<(&Player, &mut Transform)>,
+    orientation: Res<OrientationState>,
+) {
+    if orientation.is_portrait {
+        return;
+    }
     for (p, mut t) in &mut q {
         let target_x = p.target_x;
         let dx = target_x - t.translation.x;
@@ -474,7 +502,11 @@ fn spawn_obstacles(
     bt: Res<AppBootTime>,
     mut first_spawn_logged: Local<bool>,
     obstacle_assets: Res<ObstacleAssets>,
+    orientation: Res<OrientationState>,
 ) {
+    if orientation.is_portrait {
+        return;
+    }
     let elapsed_seconds = score.value / SCORE_PER_SECOND;
     let target_interval = (SPAWN_INTERVAL_BASE - elapsed_seconds * SPAWN_INTERVAL_DECAY_PER_SEC)
         .max(SPAWN_INTERVAL_MIN);
@@ -511,7 +543,11 @@ fn move_obstacles(
     time: Res<Time>,
     score: Res<Score>,
     mut q: Query<(Entity, &mut Transform), With<Obstacle>>,
+    orientation: Res<OrientationState>,
 ) {
+    if orientation.is_portrait {
+        return;
+    }
     let elapsed_seconds = score.value / SCORE_PER_SECOND;
     let speed = OBSTACLE_SPEED + elapsed_seconds * OBSTACLE_SPEED_GROWTH_PER_SEC;
 
@@ -528,7 +564,11 @@ fn collision_system(
     mut score: ResMut<Score>,
     q_player: Query<&Transform, With<Player>>,
     q_obstacles: Query<&Transform, With<Obstacle>>,
+    orientation: Res<OrientationState>,
 ) {
+    if orientation.is_portrait {
+        return;
+    }
     let Ok(player_t) = q_player.get_single() else {
         return;
     };
@@ -554,12 +594,22 @@ fn collision_system(
     }
 }
 
-fn score_system(time: Res<Time>, mut score: ResMut<Score>) {
+fn score_system(time: Res<Time>, mut score: ResMut<Score>, orientation: Res<OrientationState>) {
+    if orientation.is_portrait {
+        return;
+    }
     score.value += time.delta_seconds() * SCORE_PER_SECOND;
 }
 
-fn update_score_text(score: Res<Score>, mut q: Query<&mut Text, With<ScoreText>>) {
+fn update_score_text(
+    score: Res<Score>,
+    mut q: Query<&mut Text, With<ScoreText>>,
+    orientation: Res<OrientationState>,
+) {
     if !score.is_changed() {
+        return;
+    }
+    if orientation.is_portrait {
         return;
     }
     let elapsed_seconds = score.value / SCORE_PER_SECOND;
@@ -629,7 +679,11 @@ fn game_over_restart(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     mut next_state: ResMut<NextState<GameState>>,
+    orientation: Res<OrientationState>,
 ) {
+    if orientation.is_portrait {
+        return;
+    }
     let touched = touch_evs.read().next().is_some();
     let clicked = mouse.just_pressed(MouseButton::Left);
     let keyed = keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter);
@@ -642,5 +696,68 @@ fn game_over_restart(
 fn exit_game_over(mut commands: Commands, q: Query<Entity, With<GameOverUi>>) {
     for e in &q {
         commands.entity(e).despawn_recursive();
+    }
+}
+
+fn update_orientation(
+    windows: Query<&Window, With<PrimaryWindow>>,
+    mut orientation: ResMut<OrientationState>,
+) {
+    if let Ok(window) = windows.get_single() {
+        let size = window.resolution.size();
+        let portrait = size.y > size.x;
+        orientation.is_portrait = portrait;
+    }
+}
+
+fn manage_orientation_overlay(
+    orientation: Res<OrientationState>,
+    mut commands: Commands,
+    overlay_query: Query<Entity, With<OrientationOverlay>>,
+) {
+    if orientation.is_portrait {
+        if overlay_query.is_empty() {
+            commands
+                .spawn((
+                    NodeBundle {
+                        style: Style {
+                            width: Val::Percent(100.0),
+                            height: Val::Percent(100.0),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            top: Val::Px(0.0),
+                            left: Val::Px(0.0),
+                            position_type: PositionType::Absolute,
+                            ..Default::default()
+                        },
+                        background_color: BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 1.0)),
+                        z_index: ZIndex::Global(100),
+                        ..Default::default()
+                    },
+                    OrientationOverlay,
+                ))
+                .with_children(|parent| {
+                    parent.spawn(TextBundle {
+                        text: Text::from_section(
+                            "Rotate device to landscape",
+                            TextStyle {
+                                font_size: 36.0,
+                                color: Color::WHITE,
+                                ..Default::default()
+                            },
+                        )
+                        .with_justify(JustifyText::Center),
+                        style: Style {
+                            align_self: AlignSelf::Center,
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    });
+                });
+        }
+    } else {
+        for entity in &overlay_query {
+            commands.entity(entity).despawn_recursive();
+        }
     }
 }

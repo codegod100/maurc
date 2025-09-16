@@ -96,11 +96,20 @@ apply(from = "tauri.build.gradle.kts")
 
 // Tauri's Android CLI expects a dev-server address file even for CI release builds.
 // Ensure the placeholder exists so cargo doesn't abort before bundling assets.
+fun ensureDevServerPlaceholder() {
+    val addrFile = file("/tmp/nandi.speedblock-server-addr")
+    if (!addrFile.exists()) {
+        addrFile.parentFile?.mkdirs()
+        addrFile.writeText("http://127.0.0.1:1420")
+    }
+}
+
+gradle.taskGraph.whenReady {
+    ensureDevServerPlaceholder()
+}
+
 tasks.matching { it.name.startsWith("rustBuild") }.configureEach {
     doFirst {
-        val addrFile = file("/tmp/nandi.speedblock-server-addr")
-        if (!addrFile.exists()) {
-            addrFile.writeText("http://127.0.0.1:1420")
-        }
+        ensureDevServerPlaceholder()
     }
 }
