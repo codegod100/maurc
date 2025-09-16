@@ -35,6 +35,33 @@ body {
   justify-content: center;
   align-items: stretch;
 }
+
+/* Loading overlay */
+#loading {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: #111;
+  color: #eee;
+  z-index: 2147483647;
+  transition: opacity 0.3s ease;
+}
+#loading.fade-out { opacity: 0; }
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid rgba(255,255,255,0.2);
+  border-top-color: #ff9500;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+.loading-text { font-size: 14px; opacity: 0.9; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
 main.calculator {
   /* Ensure the focus ring or outline doesn't cause overflow */
   outline-offset: -2px;

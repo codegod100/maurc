@@ -6,9 +6,49 @@
     <title>Tauri + Bevy App</title>
     <link data-trunk rel="css" href="styles.css" />
     <link data-trunk rel="copy-dir" href="public" />
-    <link data-trunk rel="rust" data-wasm-opt="z" />
+    <link data-trunk rel="rust" />
+    <script>
+      // Filter winit’s benign “Using exceptions for control flow” noise
+      const origError = console.error;
+      console.error = function(...args) {
+        if (typeof args[0] === 'string' && args[0].includes("Using exceptions for control flow")) {
+          return;
+        }
+        return origError.apply(this, args);
+      };
+    </script>
   </head>
   <body>
+    <div id="loading" aria-live="polite" aria-busy="true">
+      <div class="spinner" role="progressbar" aria-label="Loading"></div>
+      <div class="loading-text">Loading…</div>
+    </div>
     <!-- Bevy/Winit will create and manage the canvas element -->
+    <script>
+      (function() {
+        const loading = document.getElementById('loading');
+        function hideSpinner() {
+          if (!loading) return;
+          loading.classList.add('fade-out');
+          setTimeout(() => loading.remove(), 300);
+          window.removeEventListener('bevy_ready', hideSpinner);
+        }
+        // Prefer explicit signal from WASM
+        window.addEventListener('bevy_ready', hideSpinner);
+        // Fallback: hide when Bevy inserts the canvas
+        const observer = new MutationObserver((mutations) => {
+          for (const m of mutations) {
+            for (const node of m.addedNodes) {
+              if (node && (node.nodeName === 'CANVAS' || (node.querySelector && node.querySelector('canvas')))) {
+                hideSpinner();
+                observer.disconnect();
+                return;
+              }
+            }
+          }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+      })();
+    </script>
   </body>
 </html>

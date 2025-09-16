@@ -4,8 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.taurc.app",
   "build": {
-    "beforeDevCommand": "trunk serve",
-    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "trunk build",
     "beforeBuildCommand": "trunk build --release",
     "frontendDist": "../dist"
   },
