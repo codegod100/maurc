@@ -1,6 +1,7 @@
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::input::touch::{TouchInput, TouchPhase};
 use bevy::prelude::*;
+use bevy::render::camera::PerspectiveProjection;
 use bevy::render::texture::ImagePlugin;
 use bevy::render::view::Msaa;
 use bevy::utils::Instant;
@@ -24,6 +25,31 @@ const DRAG_X_PER_PX: f32 = 0.02; // world units per horizontal pixel drag
 const PLAYER_LERP_SPEED: f32 = 12.0; // x-axis smoothing towards target
 const KEY_STEP_X: f32 = 0.9; // keyboard step per press
 const SCORE_PER_SECOND: f32 = 10.0;
+
+#[cfg(target_os = "android")]
+fn camera_bundle() -> Camera3dBundle {
+    let mut bundle = Camera3dBundle::default();
+    bundle.transform =
+        Transform::from_xyz(0.0, 12.0, 22.0).looking_at(Vec3::new(0.0, 0.5, 0.0), Vec3::Y);
+    bundle.projection = PerspectiveProjection {
+        fov: 80_f32.to_radians(),
+        ..Default::default()
+    }
+    .into();
+    bundle.camera.hdr = false;
+    bundle.tonemapping = Tonemapping::None;
+    bundle
+}
+
+#[cfg(not(target_os = "android"))]
+fn camera_bundle() -> Camera3dBundle {
+    let mut bundle = Camera3dBundle::default();
+    bundle.transform =
+        Transform::from_xyz(0.0, 6.0, 8.0).looking_at(Vec3::new(0.0, 0.5, 0.0), Vec3::Y);
+    bundle.camera.hdr = false;
+    bundle.tonemapping = Tonemapping::None;
+    bundle
+}
 
 #[derive(States, Default, Debug, Clone, Eq, PartialEq, Hash)]
 enum GameState {
@@ -160,15 +186,7 @@ fn setup(
         bt.app_start.elapsed()
     );
     // Camera slightly above and behind, looking at the play area
-    commands.spawn(Camera3dBundle {
-        transform: Transform::from_xyz(0.0, 6.0, 8.0).looking_at(Vec3::new(0.0, 0.5, 0.0), Vec3::Y),
-        camera: Camera {
-            hdr: false,
-            ..Default::default()
-        },
-        tonemapping: Tonemapping::None,
-        ..Default::default()
-    });
+    commands.spawn(camera_bundle());
 
     // Prewarm PBR pipeline with an off-screen unlit cube
     let warm_mesh = meshes.add(Mesh::from(Cuboid::new(0.1, 0.1, 0.1)));
